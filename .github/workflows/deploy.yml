@@ -1,9 +1,10 @@
-name: Deploy to EC2
+name: Deploy Django + React to EC2
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -13,17 +14,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy to EC2
+      - name: Deploy via AWS SSM
         run: |
-          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
-          cd /home/ubuntu/django-react-project
-          git pull origin main
-          echo "CI/CD DEPLOYMENT SUCCESSFUL"
-          EOF
+          aws ssm send-command \
+            --region "${{ secrets.AWS_REGION }}" \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --comment "CI/CD deploy Django + React" \
+            --parameters commands='[
+              "cd /home/ubuntu/django-react-project",
+              "git pull origin main",
+
+              "echo BACKEND DEPLOY",
+              "cd django_react_project/backend",
+              "source venv/bin/activate || true",
+              "pip install -r requirements.txt || true",
+              "python manage.py migrate || true",
+              "sudo systemctl restart gunicorn || true",
+
+              "echo FRONTEND DEPLOY",
+              "cd ../../django-react-frontend",
+              "npm install",
+              "npm run build",
+
+              "sudo rm -rf /var/www/html/* || true",
+              "sudo cp -r build/* /var/www/html/",
+              "sudo systemctl reload nginx"
+            ]'
