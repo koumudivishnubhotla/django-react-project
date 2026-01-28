@@ -1,4 +1,4 @@
-name: Deploy Django + React to EC2 (SSM)
+name: Auto Deploy Django + React to EC2
 
 on:
   push:
@@ -21,28 +21,34 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Deploy Backend + Frontend via AWS SSM
+      - name: Deploy via AWS SSM
         run: |
           aws ssm send-command \
             --region "${{ secrets.AWS_REGION }}" \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy Django + React" \
+            --comment "Auto deploy full stack app" \
             --parameters commands='[
               "cd /home/ubuntu/django-react-project",
               "git pull origin main",
 
+              "echo ===== BACKEND DEPLOY =====",
               "cd django_react_project/backend",
               "source venv/bin/activate",
               "pip install -r requirements.txt",
-              "python manage.py migrate",
+              "python manage.py migrate --noinput",
               "python manage.py collectstatic --noinput",
-              "sudo systemctl restart gunicorn",
+              "sudo pkill gunicorn || true",
+              "gunicorn backend.wsgi:application --bind 127.0.0.1:8001 --daemon",
 
+              "echo ===== FRONTEND DEPLOY =====",
               "cd ../../django-react-frontend",
               "npm install",
               "npm run build",
-              "sudo rm -rf /var/www/react/*",
-              "sudo cp -r build/* /var/www/react/",
-              "sudo systemctl reload nginx"
+              "sudo rm -rf /var/www/frontend/*",
+              "sudo cp -r build/* /var/www/frontend/",
+              "sudo chown -R www-data:www-data /var/www/frontend",
+
+              "sudo systemctl reload nginx",
+              "echo ===== DEPLOYMENT COMPLETE ====="
             ]'
