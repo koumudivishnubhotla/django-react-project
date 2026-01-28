@@ -1,3 +1,4 @@
+// AUTO DEPLOY TEST - Jan 28 2026
 import React, { useState } from "react";
 
 const isStrongPassword = (password) => {
