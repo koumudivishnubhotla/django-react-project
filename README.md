@@ -1,1 +1,1 @@
-Auto deploy test
+AUTO DEPLOY VERIFIED - EC2
